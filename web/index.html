@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ArenAI Grid - Live Viewer</title>
+  <style>
+    :root {
+      --bg: #0f1116;
+      --panel: #161925;
+      --text: #e7ecff;
+      --muted: #8c93aa;
+      --blue: #4f7bff;
+      --red: #ff5d5d;
+      --green: #5fd7a1;
+      --amber: #f7c948;
+      --purple: #c18bff;
+      --obstacle: #2c3347;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      background: radial-gradient(circle at 20% 20%, #182032, #0f1116 60%);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+    .layout {
+      width: 1024px;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #23283a;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    h1 { margin: 0 0 4px 0; font-size: 24px; }
+    .subhead { color: var(--muted); margin-bottom: 12px; }
+    .grid {
+      display: grid;
+      gap: 4px;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: #10131b;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #1f2433;
+    }
+    .cell {
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      color: #0b0d14;
+      transition: transform 0.1s ease;
+    }
+    .cell:hover { transform: translateY(-1px); }
+    .obstacle { background: var(--obstacle); color: #555; }
+    .resource-1 { background: var(--green); }
+    .resource-2 { background: var(--amber); }
+    .resource-3 { background: var(--purple); }
+    .base-blue { background: linear-gradient(135deg, #2f54ff, #4f7bff); color: #e7ecff; }
+    .base-red { background: linear-gradient(135deg, #ff4f4f, #ff7b7b); color: #ffecec; }
+    .unit-blue { background: var(--blue); color: #0e101a; }
+    .unit-red { background: var(--red); color: #0e101a; }
+    .cell-pop { animation: pop 0.25s ease; }
+    .cell-flash { animation: flash 0.6s ease; }
+    .cell-move { animation: move 0.4s ease; }
+    .controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+    button {
+      background: #2c3350;
+      color: var(--text);
+      border: 1px solid #3a4366;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #343c5c; }
+    .events { max-height: 340px; overflow-y: auto; margin-top: 8px; }
+    .event { margin: 0; padding: 6px 8px; border-bottom: 1px solid #1f2433; color: var(--muted); }
+    .bad { color: #ff9b9b; }
+    .good { color: #9bffbd; }
+    .statline { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
+    .stat { background: #1a1f2d; padding: 8px; border-radius: 8px; border: 1px solid #20263b; }
+    .stat label { color: var(--muted); display: block; font-size: 12px; }
+    .stat strong { font-size: 16px; }
+    .notice { color: #f7c948; font-weight: 600; margin-top: 10px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    input, select { padding: 6px 8px; border-radius: 6px; border: 1px solid #2a3046; background: #10131b; color: var(--text); }
+    .status { color: var(--muted); margin-top: 6px; }
+    @keyframes pop { 0% { transform: scale(0.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes flash { 0% { box-shadow: 0 0 0px 0 rgba(255,255,255,0.4); } 100% { box-shadow: 0 0 0px 12px rgba(255,255,255,0); } }
+    @keyframes move { 0% { transform: translateY(-2px); } 100% { transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="panel">
+      <h1>ArenAI Grid – Live</h1>
+      <div class="subhead">Kick off a match from the browser and watch it play out.</div>
+
+      <details id="intro" open style="margin-bottom:10px;">
+        <summary style="cursor:pointer; color: var(--muted); font-weight:600;">Quick primer (what you’re seeing)</summary>
+        <div style="margin-top:6px; color: var(--muted); line-height:1.5; font-size:14px;">
+          <div><strong>Goal:</strong> Units harvest resources (1/2/3) and return to base for points; attacking can kill units (+10) and eventually destroy the enemy base (+30).</div>
+          <div><strong>Turn flow:</strong> Both AIs take turns; each unit acts once (move, harvest, attack, or idle).</div>
+          <div><strong>Board legend:</strong> Blue/Red bases (B/R), units (b/r), obstacles (#), resources (1/2/3).</div>
+          <div><strong>HUD:</strong> Scores, base HP, units alive, recent events. Combo bonus when a drop has at least one of each resource type.</div>
+        </div>
+      </details>
+
+      <div class="row" style="margin-bottom: 8px;">
+        <label>Blue
+          <select id="blueAgent">
+            <option value="heuristic">heuristic</option>
+            <option value="random">random</option>
+          </select>
+        </label>
+        <label>Red
+          <select id="redAgent">
+            <option value="random">random</option>
+            <option value="heuristic">heuristic</option>
+          </select>
+        </label>
+        <label>Seed
+          <input id="seedInput" type="number" placeholder="optional" style="width:100px;">
+        </label>
+        <button id="runBtn">Run Match</button>
+        <span id="status" class="status"></span>
+      </div>
+
+      <div id="grid" class="grid"></div>
+      <div class="controls">
+        <button id="playPause">Pause</button>
+        <button id="stepBtn">Step</button>
+        <label>Speed <input id="speed" type="range" min="150" max="1200" step="50" value="450"></label>
+        <div id="turnLabel" style="color: var(--muted); font-weight: 600;"></div>
+      </div>
+      <div class="statline">
+        <div class="stat" id="blueStats"></div>
+        <div class="stat" id="redStats"></div>
+      </div>
+      <div class="notice" id="winner"></div>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0;">Events</h3>
+      <div id="events" class="events"></div>
+    </div>
+  </div>
+  <script>
+    (function init() {
+      const gridEl = document.getElementById("grid");
+      const eventsEl = document.getElementById("events");
+      const playPauseBtn = document.getElementById("playPause");
+      const stepBtn = document.getElementById("stepBtn");
+      const speedInput = document.getElementById("speed");
+      const turnLabel = document.getElementById("turnLabel");
+      const blueStats = document.getElementById("blueStats");
+      const redStats = document.getElementById("redStats");
+      const winnerEl = document.getElementById("winner");
+      const runBtn = document.getElementById("runBtn");
+      const status = document.getElementById("status");
+      const blueAgent = document.getElementById("blueAgent");
+      const redAgent = document.getElementById("redAgent");
+      const seedInput = document.getElementById("seedInput");
+
+      let frames = [];
+      let meta = null;
+      let idx = 0;
+      let timer = null;
+      let prevOccupants = new Map(); // key -> occupant id
+      let prevUnitPos = new Map(); // unit id -> "x,y"
+
+      function renderFrame(frame) {
+        if (!frame || !meta) return;
+        gridEl.innerHTML = "";
+        const cellMap = Array.from({ length: meta.height }, () => Array(meta.width).fill(null));
+        frame.obstacles.forEach(([x,y]) => cellMap[y][x] = { type: "obstacle", id: `obs-${x}-${y}` });
+        frame.resources.forEach(r => cellMap[r.p[1]][r.p[0]] = { type: `resource-${r.t.slice(1)}`, id: `res-${r.t}-${r.p[0]}-${r.p[1]}` });
+        Object.entries(frame.bases).forEach(([name, base]) => {
+          cellMap[base.pos[1]][base.pos[0]] = { type: name === "Blue" ? "base-blue" : "base-red", label: name[0], id: `base-${name}` };
+        });
+        Object.entries(frame.units).forEach(([name, units]) => {
+          units.forEach(u => {
+            cellMap[u.pos[1]][u.pos[0]] = { type: name === "Blue" ? "unit-blue" : "unit-red", label: name[0].toLowerCase(), id: u.id };
+          });
+        });
+
+        for (let y = 0; y < meta.height; y++) {
+          for (let x = 0; x < meta.width; x++) {
+            const cell = document.createElement("div");
+            cell.classList.add("cell");
+            const content = cellMap[y][x];
+            const key = `${x},${y}`;
+            const prevId = prevOccupants.get(key);
+
+            if (content) {
+              cell.classList.add(content.type);
+              cell.textContent = content.label || "";
+              if (prevId !== content.id) {
+                cell.classList.add("cell-pop");
+                if (prevId) cell.classList.add("cell-flash");
+              }
+              if (content.id && prevUnitPos.has(content.id)) {
+                const prevPos = prevUnitPos.get(content.id);
+                if (prevPos !== key) cell.classList.add("cell-move");
+              }
+            } else {
+              cell.style.background = "#121724";
+              cell.style.border = "1px solid #1b2131";
+              if (prevId) cell.classList.add("cell-flash");
+            }
+            gridEl.appendChild(cell);
+          }
+        }
+
+        turnLabel.textContent = `Turn ${frame.turn}/${meta.maxTurns}`;
+        updateStats(frame);
+        renderEvents(frame.events);
+
+        // Save occupant state for next render
+        const nextOcc = new Map();
+        const nextUnitPos = new Map();
+        for (let y = 0; y < meta.height; y++) {
+          for (let x = 0; x < meta.width; x++) {
+            const content = cellMap[y][x];
+            if (content) {
+              const key = `${x},${y}`;
+              nextOcc.set(key, content.id);
+              if (content.id && (content.id.startsWith("b") || content.id.startsWith("r"))) {
+                nextUnitPos.set(content.id, key);
+              }
+            }
+          }
+        }
+        prevOccupants = nextOcc;
+        prevUnitPos = nextUnitPos;
+      }
+
+      function updateStats(frame) {
+        const b = frame.bases.Blue;
+        const r = frame.bases.Red;
+        const bUnits = (frame.units.Blue || []).length;
+        const rUnits = (frame.units.Red || []).length;
+        blueStats.innerHTML = `<label>Blue</label><strong>Score ${b.score}</strong><div>HP ${b.hp} · Units ${bUnits}</div>`;
+        redStats.innerHTML = `<label>Red</label><strong>Score ${r.score}</strong><div>HP ${r.hp} · Units ${rUnits}</div>`;
+      }
+
+      function renderEvents(evts) {
+        eventsEl.innerHTML = "";
+        const recent = evts.slice(-12).reverse();
+        if (recent.length === 0) {
+          eventsEl.innerHTML = "<div class='event'>No notable events yet.</div>";
+          return;
+        }
+        recent.forEach(e => {
+          const div = document.createElement("div");
+          div.className = "event";
+          div.textContent = e;
+          if (e.toLowerCase().includes("fell") || e.toLowerCase().includes("destroy")) div.classList.add("bad");
+          if (e.toLowerCase().includes("delivered") || e.toLowerCase().includes("harvest")) div.classList.add("good");
+          eventsEl.appendChild(div);
+        });
+      }
+
+      function step() {
+        if (!frames.length) return;
+        idx = Math.min(idx + 1, frames.length - 1);
+        renderFrame(frames[idx]);
+        if (idx === frames.length - 1) {
+          pause();
+          playPauseBtn.textContent = "Replay";
+        }
+      }
+
+      function play() {
+        if (timer || !frames.length) return;
+        playPauseBtn.textContent = "Pause";
+        timer = setInterval(() => {
+          step();
+        }, parseInt(speedInput.value, 10));
+      }
+
+      function pause() {
+        if (timer) clearInterval(timer);
+        timer = null;
+      }
+
+      function loadReplay(data) {
+        meta = data.meta;
+        frames = data.frames;
+        idx = 0;
+        prevOccupants = new Map();
+        prevUnitPos = new Map();
+        winnerEl.textContent = data.winner ? `Winner: ${data.winner}` : "";
+        gridEl.style.gridTemplateColumns = `repeat(${meta.width}, 1fr)`;
+        gridEl.style.gridTemplateRows = `repeat(${meta.height}, 1fr)`;
+        renderFrame(frames[idx]);
+        playPauseBtn.textContent = "Pause";
+        play();
+      }
+
+      async function runMatch() {
+        pause();
+        status.textContent = "Running match...";
+        playPauseBtn.disabled = true;
+        stepBtn.disabled = true;
+        const seedValue = seedInput.value === "" ? null : seedInput.value;
+        const params = new URLSearchParams({
+          blue: blueAgent.value,
+          red: redAgent.value,
+        });
+        if (seedValue !== null) params.append("seed", seedValue);
+        try {
+          const resp = await fetch(`/api/run?${params.toString()}`);
+          if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+          const data = await resp.json();
+          if (data.error) throw new Error(data.error);
+          loadReplay(data);
+          status.textContent = "Match ready.";
+        } catch (err) {
+          console.error(err);
+          status.textContent = `Error: ${err.message}`;
+        } finally {
+          playPauseBtn.disabled = false;
+          stepBtn.disabled = false;
+        }
+      }
+
+      runBtn.addEventListener("click", () => {
+        runMatch();
+      });
+
+      playPauseBtn.addEventListener("click", () => {
+        if (!frames.length) return;
+        if (!timer && idx === frames.length - 1) {
+          idx = 0;
+          renderFrame(frames[idx]);
+        }
+        if (timer) {
+          pause();
+          playPauseBtn.textContent = "Play";
+        } else {
+          play();
+        }
+      });
+      stepBtn.addEventListener("click", () => {
+        pause();
+        playPauseBtn.textContent = "Play";
+        step();
+      });
+      speedInput.addEventListener("input", () => {
+        if (timer) {
+          pause();
+          play();
+        }
+      });
+
+      status.textContent = "Ready. Click Run Match to start.";
+    })();
+  </script>
+</body>
+</html>

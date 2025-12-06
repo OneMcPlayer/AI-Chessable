@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+game_log.txt
+web/game_data.js
