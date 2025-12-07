@@ -13,11 +13,22 @@ class ReplayRecorder:
 
     def __init__(self):
         self.frames: List[Dict] = []
-        self.meta: Dict[str, int] = {}
+        self.meta: Dict[str, object] = {}
 
     def record(self, state: GameState, events: List[str]) -> None:
         if not self.meta:
-            self.meta = {"width": state.width, "height": state.height, "maxTurns": state.max_turns}
+            self.meta = {
+                "width": state.width,
+                "height": state.height,
+                "maxTurns": state.max_turns,
+                "mode": getattr(state, "mode", "classic"),
+                "modeLabel": getattr(state, "mode_label", ""),
+                "modeDescription": getattr(state, "mode_description", ""),
+                "resourceTypes": getattr(state, "resource_types", []),
+                "resourceValues": getattr(state, "resource_values", {}),
+                "carryLimit": getattr(state, "carry_limit", 0),
+                "modeParams": getattr(state, "mode_params", {}),
+            }
         frame = {
             "turn": state.current_turn,
             "events": list(events),
@@ -33,13 +44,23 @@ class ReplayRecorder:
                         "id": u.uid,
                         "hp": u.hp,
                         "pos": [u.position.x, u.position.y],
-                        "cargo": u.carrying,
+                        "cargo": dict(u.carrying),
                     }
                     for u in p.units.values()
                     if u.is_alive()
                 ]
                 for name, p in state.players.items()
             },
+            "controlPoints": [
+                {
+                    "id": cp.cid,
+                    "pos": [cp.position.x, cp.position.y],
+                    "controller": cp.controller,
+                    "stability": cp.stability,
+                    "peace": cp.peace_turns,
+                }
+                for cp in getattr(state, "control_points", [])
+            ],
         }
         self.frames.append(frame)
 
@@ -57,4 +78,3 @@ def write_js_replay(replay: Dict, path: str = "web/game_data.js") -> None:
         f.write("const replayData = ")
         json.dump(replay, f)
         f.write(";\n")
-

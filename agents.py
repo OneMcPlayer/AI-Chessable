@@ -22,6 +22,9 @@ class RandomAgent(Agent):
 
     def choose_actions(self, game_state: GameState) -> Dict[str, Action]:
         actions: Dict[str, Action] = {}
+        carry_limit = getattr(game_state, "carry_limit", config.UNIT_CARRY_LIMIT)
+        mode = getattr(game_state, "mode", "classic")
+        control_points = getattr(game_state, "control_points", [])
         occupied = _occupied_positions(game_state)
         for player in game_state.players.values():
             for unit in player.units.values():
@@ -30,8 +33,13 @@ class RandomAgent(Agent):
                 action_choices: List[Action] = [Action("idle")]
                 # Harvest if on resource
                 if game_state.resources:
-                    if any(res.position == unit.position for res in game_state.resources) and unit.cargo_count() < config.UNIT_CARRY_LIMIT:
+                    if any(res.position == unit.position for res in game_state.resources) and unit.cargo_count() < carry_limit:
                         action_choices.append(Action("harvest"))
+                cp_here = _control_point_at(unit.position, control_points)
+                if mode != "classic" and cp_here:
+                    action_choices.append(Action("stabilize"))
+                    if cp_here.controller in (None, unit.owner):
+                        action_choices.append(Action("pacify"))
                 # Attack if adjacent
                 for npos, delta in _adjacent_positions(unit.position, game_state, occupied):
                     target_unit = _unit_at_position(game_state, npos)
@@ -70,6 +78,11 @@ class HeuristicAgent(Agent):
         my_base = game_state.players[unit.owner].base.position
         enemy_name = "Red" if unit.owner == "Blue" else "Blue"
         enemy_base = game_state.players[enemy_name].base.position
+        carry_limit = getattr(game_state, "carry_limit", config.UNIT_CARRY_LIMIT)
+        mode = getattr(game_state, "mode", "classic")
+        control_points = getattr(game_state, "control_points", [])
+        capture_threshold = _mode_param(game_state, "capture_threshold", 1)
+        low_hp_threshold = 4 if mode == "classic" else 5
 
         # Attack adjacent threats/opportunities
         enemy_adjacent = self._adjacent_enemies(unit, game_state)
@@ -79,8 +92,18 @@ class HeuristicAgent(Agent):
             delta = _direction_from_to(unit.position, target.position)
             return Action("attack", delta)
 
+        if mode != "classic" and control_points:
+            cp_here = _control_point_at(unit.position, control_points)
+            if cp_here:
+                if cp_here.controller != unit.owner:
+                    return Action("stabilize")
+                if cp_here.controller == unit.owner and cp_here.stability < capture_threshold:
+                    return Action("stabilize")
+                if cp_here.controller == unit.owner and cp_here.peace_turns == 0 and self._enemy_within(unit, game_state, radius=1):
+                    return Action("pacify")
+
         # Harvest if standing on resource and have space
-        if any(res.position == unit.position for res in game_state.resources) and unit.cargo_count() < config.UNIT_CARRY_LIMIT:
+        if any(res.position == unit.position for res in game_state.resources) and unit.cargo_count() < carry_limit:
             return Action("harvest")
 
         # Return to base if carrying loot
@@ -91,9 +114,15 @@ class HeuristicAgent(Agent):
             return Action("idle")
 
         # Retreat if low hp and enemy nearby
-        if unit.hp <= 4 and self._enemy_within(unit, game_state, radius=2):
+        if unit.hp <= low_hp_threshold and self._enemy_within(unit, game_state, radius=2):
             step = self._step_toward(unit.position, my_base, game_state, occupied)
             return Action("move", step) if step else Action("idle")
+
+        if mode != "classic" and control_points:
+            target_cp = self._target_control_point(unit, control_points, capture_threshold)
+            if target_cp:
+                step = self._step_toward(unit.position, target_cp.position, game_state, occupied)
+                return Action("move", step) if step else Action("idle")
 
         # Move toward nearest resource, else enemy base
         target_res = self._nearest_resource(unit, game_state)
@@ -105,6 +134,18 @@ class HeuristicAgent(Agent):
         if not game_state.resources:
             return None
         return min(game_state.resources, key=lambda r: unit.position.manhattan_distance(r.position))
+
+    def _target_control_point(self, unit: Unit, control_points, capture_threshold: int):
+        if not control_points:
+            return None
+        candidates = []
+        for cp in control_points:
+            if cp.controller == unit.owner and cp.stability >= capture_threshold:
+                continue
+            candidates.append(cp)
+        if not candidates:
+            return None
+        return min(candidates, key=lambda cp: unit.position.manhattan_distance(cp.position))
 
     def _enemy_within(self, unit: Unit, game_state: GameState, radius: int) -> bool:
         for player in game_state.players.values():
@@ -157,6 +198,18 @@ def _is_cell_free(game_state: GameState, pos: Position, occupied: Dict[Tuple[int
         if player.base.position == pos and player.name != owner:
             return False
     return True
+
+
+def _control_point_at(pos: Position, control_points):
+    for cp in control_points:
+        if cp.position == pos:
+            return cp
+    return None
+
+
+def _mode_param(game_state: GameState, key: str, default: int) -> int:
+    params = getattr(game_state, "mode_params", {}) or {}
+    return params.get(key, default)
 
 
 def _adjacent_positions(

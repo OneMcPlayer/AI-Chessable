@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from agents import HeuristicAgent, RandomAgent
 from game_engine import GameEngine
+from game_modes import DEFAULT_MODE, GAME_MODES
 from replay import ReplayRecorder
 
 
@@ -27,11 +28,11 @@ def build_agent(agent_name: str, seed: Optional[int]) -> object:
     return cls(seed=seed)
 
 
-def run_match(blue: str, red: str, seed: Optional[int]) -> dict:
+def run_match(blue: str, red: str, seed: Optional[int], mode: str) -> dict:
     agent_blue = build_agent(blue, seed)
     agent_red = build_agent(red, None if seed is None else seed + 1)
     recorder = ReplayRecorder()
-    engine = GameEngine(agent_blue, agent_red, seed=seed, fast_mode=True)
+    engine = GameEngine(agent_blue, agent_red, seed=seed, fast_mode=True, mode_key=mode)
     winner_state = engine.play(recorder=recorder)
     return recorder.to_dict(winner_state.name)
 
@@ -53,6 +54,7 @@ class ArenAIRequestHandler(SimpleHTTPRequestHandler):
         blue = params.get("blue", ["heuristic"])[0]
         red = params.get("red", ["random"])[0]
         seed_param = params.get("seed", [None])[0]
+        mode = params.get("mode", [DEFAULT_MODE])[0]
         try:
             seed = int(seed_param) if seed_param is not None else None
         except ValueError:
@@ -60,8 +62,10 @@ class ArenAIRequestHandler(SimpleHTTPRequestHandler):
 
         if blue not in AGENT_REGISTRY or red not in AGENT_REGISTRY:
             return self._send_json({"error": f"Agents must be in {list(AGENT_REGISTRY.keys())}"}, status=400)
+        if mode not in GAME_MODES:
+            return self._send_json({"error": f"Mode must be in {list(GAME_MODES.keys())}"}, status=400)
 
-        replay = run_match(blue, red, seed)
+        replay = run_match(blue, red, seed, mode)
         return self._send_json(replay)
 
     def _send_json(self, payload: dict, status: int = 200):
@@ -83,7 +87,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     print(f"Serving from {WEB_DIR} at http://localhost:{args.port}")
-    print("Use /api/run?blue=heuristic&red=random&seed=123 to trigger a match, or click 'Run Match' in the UI.")
+    print(
+        "Use /api/run?blue=heuristic&red=random&seed=123&mode=world to trigger a match, or click 'Run Match' in the UI."
+    )
 
     with ThreadingHTTPServer(("", args.port), ArenAIRequestHandler) as httpd:
         try:

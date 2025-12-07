@@ -30,6 +30,15 @@ class ResourceTile:
 
 
 @dataclass
+class ControlPoint:
+    cid: int
+    position: Position
+    controller: Optional[str] = None
+    stability: int = 0
+    peace_turns: int = 0
+
+
+@dataclass
 class Base:
     owner: str  # "Blue" or "Red"
     hp: int
@@ -69,11 +78,19 @@ class GameState:
 
     width: int
     height: int
+    mode: str
+    mode_label: str
+    mode_description: str
     obstacles: List[Position]
     resources: List[ResourceTile]
     players: Dict[str, PlayerState]
     current_turn: int
     max_turns: int
+    resource_types: List[str]
+    resource_values: Dict[str, int]
+    carry_limit: int
+    control_points: List[ControlPoint] = field(default_factory=list)
+    mode_params: Dict[str, int] = field(default_factory=dict)
 
     def find_unit(self, uid: str) -> Optional[Unit]:
         for p in self.players.values():
@@ -100,20 +117,27 @@ class GameState:
             players_copy[name] = PlayerState(
                 name=p.name, base=Base(p.base.owner, p.base.hp, p.base.position), units=units_copy, score=p.score
             )
-        resources_copy = [ResourceTile(r.rtype, r.position) for r in self.resources]
+            resources_copy = [ResourceTile(r.rtype, r.position) for r in self.resources]
         return GameState(
             width=self.width,
             height=self.height,
+            mode=self.mode,
+            mode_label=self.mode_label,
+            mode_description=self.mode_description,
             obstacles=list(self.obstacles),
             resources=resources_copy,
             players=players_copy,
             current_turn=self.current_turn,
             max_turns=self.max_turns,
+            resource_types=list(self.resource_types),
+            resource_values=dict(self.resource_values),
+            carry_limit=self.carry_limit,
+            control_points=[ControlPoint(cp.cid, cp.position, cp.controller, cp.stability, cp.peace_turns) for cp in self.control_points],
+            mode_params=dict(self.mode_params),
         )
 
 
 @dataclass
 class Action:
-    type: str  # "move", "harvest", "attack", "idle"
+    type: str  # "move", "harvest", "attack", "idle", "stabilize", "pacify"
     direction: Optional[Tuple[int, int]] = None  # for move/attack
-

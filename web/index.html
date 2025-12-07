@@ -15,6 +15,12 @@
       --amber: #f7c948;
       --purple: #c18bff;
       --obstacle: #2c3347;
+      --world-bg: radial-gradient(circle at 15% 20%, #0b1a2c 0%, #07101e 35%, #050b15 100%);
+      --world-grid: rgba(255,255,255,0.03);
+      --world-resource-a: linear-gradient(135deg, #6be2ff, #1e91ff);
+      --world-resource-b: linear-gradient(135deg, #ffd66b, #ff9b42);
+      --world-resource-c: linear-gradient(135deg, #90f6d7, #2fd095);
+      --world-city: #1f2c46;
     }
     * { box-sizing: border-box; }
     body {
@@ -25,6 +31,9 @@
       display: flex;
       justify-content: center;
       padding: 24px;
+    }
+    body.world-mode {
+      background: var(--world-bg);
     }
     .layout {
       width: 1024px;
@@ -51,6 +60,11 @@
       border-radius: 10px;
       border: 1px solid #1f2433;
     }
+    .grid.mode-world {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2)), var(--world-grid);
+      border: 1px solid #25324c;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02), 0 20px 60px rgba(0,0,0,0.45);
+    }
     .cell {
       border-radius: 4px;
       display: flex;
@@ -60,12 +74,17 @@
       font-size: 13px;
       color: #0b0d14;
       transition: transform 0.1s ease;
+      position: relative;
     }
     .cell:hover { transform: translateY(-1px); }
-    .obstacle { background: var(--obstacle); color: #555; }
+    .obstacle { background: var(--obstacle); color: #555; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.1) 0 6px, rgba(255,255,255,0.08) 6px 8px); }
     .resource-1 { background: var(--green); }
     .resource-2 { background: var(--amber); }
     .resource-3 { background: var(--purple); }
+    .resource-world { color: #0b1628; }
+    .resource-world[data-rtype="Intel"] { background: var(--world-resource-a); }
+    .resource-world[data-rtype="Supplies"] { background: var(--world-resource-b); }
+    .resource-world[data-rtype="Aid"] { background: var(--world-resource-c); }
     .base-blue { background: linear-gradient(135deg, #2f54ff, #4f7bff); color: #e7ecff; }
     .base-red { background: linear-gradient(135deg, #ff4f4f, #ff7b7b); color: #ffecec; }
     .unit-blue { background: var(--blue); color: #0e101a; }
@@ -73,6 +92,29 @@
     .cell-pop { animation: pop 0.25s ease; }
     .cell-flash { animation: flash 0.6s ease; }
     .cell-move { animation: move 0.4s ease; }
+    .control-neutral { box-shadow: inset 0 0 0 2px #515a74, 0 0 0 4px rgba(255,255,255,0.04); }
+    .control-blue { box-shadow: inset 0 0 0 2px var(--blue), 0 0 0 4px rgba(79,123,255,0.18); }
+    .control-red { box-shadow: inset 0 0 0 2px var(--red), 0 0 0 4px rgba(255,93,93,0.18); }
+    .control-peace { box-shadow: inset 0 0 0 2px var(--green), 0 0 0 4px rgba(95,215,161,0.22); }
+    .control-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .legend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 2px; color: var(--muted); font-size: 12px; }
+    .legend .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: #1a2032; border: 1px solid #232b3f; }
+    .chip .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); }
+    .chip .swatch.intel { background: var(--world-resource-a); }
+    .chip .swatch.supplies { background: var(--world-resource-b); }
+    .chip .swatch.aid { background: var(--world-resource-c); }
+    .chip .swatch.city { background: var(--world-city); box-shadow: inset 0 0 0 2px #4f7bff; }
+    .chip .swatch.peace { background: var(--world-city); box-shadow: inset 0 0 0 2px var(--green); }
     .controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
     button {
       background: #2c3350;
@@ -106,18 +148,27 @@
     <div class="panel">
       <h1>ArenAI Grid – Live</h1>
       <div class="subhead">Kick off a match from the browser and watch it play out.</div>
+      <div id="modeMeta" class="notice">Mode: World Conquest/Peace (default)</div>
+      <div id="modeDesc" class="subhead" style="margin-top:-6px;">Capture cities for influence or pacify them for shared peace points.</div>
 
       <details id="intro" open style="margin-bottom:10px;">
         <summary style="cursor:pointer; color: var(--muted); font-weight:600;">Quick primer (what you’re seeing)</summary>
         <div style="margin-top:6px; color: var(--muted); line-height:1.5; font-size:14px;">
-          <div><strong>Goal:</strong> Units harvest resources (1/2/3) and return to base for points; attacking can kill units (+10) and eventually destroy the enemy base (+30).</div>
-          <div><strong>Turn flow:</strong> Both AIs take turns; each unit acts once (move, harvest, attack, or idle).</div>
-          <div><strong>Board legend:</strong> Blue/Red bases (B/R), units (b/r), obstacles (#), resources (1/2/3).</div>
-          <div><strong>HUD:</strong> Scores, base HP, units alive, recent events. Combo bonus when a drop has at least one of each resource type.</div>
+          <div><strong>World mode (default):</strong> Fight over cities (ringed tiles). Stabilize them to control + earn influence each turn, or pacify them to grant shared peace income. Supply caches (1/2/3) still deliver for points. Bases can still fall.</div>
+          <div><strong>Legacy mode:</strong> The original table-style resource race remains available under “Legacy Grid (archived)” in the Mode dropdown.</div>
+          <div><strong>Turn flow:</strong> Both AIs take turns; each unit acts once (move, harvest, attack, stabilize/pacify, or idle).</div>
+          <div><strong>Board legend:</strong> Blue/Red bases (B/R), units (b/r), obstacles (#), resources (1/2/3), cities (ring outline; peace glow in green).</div>
+          <div><strong>HUD:</strong> Scores, base HP, units alive, cities held. Combo bonus when a drop has at least one of each resource type.</div>
         </div>
       </details>
 
       <div class="row" style="margin-bottom: 8px;">
+        <label>Mode
+          <select id="modeSelect">
+            <option value="world">World Conquest/Peace (new)</option>
+            <option value="classic">Legacy Grid (archived)</option>
+          </select>
+        </label>
         <label>Blue
           <select id="blueAgent">
             <option value="heuristic">heuristic</option>
@@ -138,6 +189,7 @@
       </div>
 
       <div id="grid" class="grid"></div>
+      <div id="legend" class="legend" aria-label="Legend"></div>
       <div class="controls">
         <button id="playPause">Pause</button>
         <button id="stepBtn">Step</button>
@@ -171,6 +223,10 @@
       const blueAgent = document.getElementById("blueAgent");
       const redAgent = document.getElementById("redAgent");
       const seedInput = document.getElementById("seedInput");
+      const modeSelect = document.getElementById("modeSelect");
+      const modeMeta = document.getElementById("modeMeta");
+      const modeDesc = document.getElementById("modeDesc");
+      const legend = document.getElementById("legend");
 
       let frames = [];
       let meta = null;
@@ -182,15 +238,32 @@
       function renderFrame(frame) {
         if (!frame || !meta) return;
         gridEl.innerHTML = "";
-        const cellMap = Array.from({ length: meta.height }, () => Array(meta.width).fill(null));
-        frame.obstacles.forEach(([x,y]) => cellMap[y][x] = { type: "obstacle", id: `obs-${x}-${y}` });
-        frame.resources.forEach(r => cellMap[r.p[1]][r.p[0]] = { type: `resource-${r.t.slice(1)}`, id: `res-${r.t}-${r.p[0]}-${r.p[1]}` });
+        gridEl.classList.toggle("mode-world", meta.mode === "world");
+        const cellMap = Array.from({ length: meta.height }, () =>
+          Array.from({ length: meta.width }, () => ({ primary: null, control: null }))
+        );
+        const isWorld = meta.mode === "world";
+
+        (frame.controlPoints || []).forEach(cp => {
+          const [cx, cy] = cp.pos;
+          if (cellMap[cy] && cellMap[cy][cx]) {
+            cellMap[cy][cx].control = cp;
+          }
+        });
+
+        frame.obstacles.forEach(([x,y]) => cellMap[y][x].primary = { type: "obstacle", id: `obs-${x}-${y}` });
+        frame.resources.forEach(r => {
+          const idx = (meta.resourceTypes || []).indexOf(r.t);
+          const label = isWorld ? r.t[0] : (idx >= 0 ? `${idx + 1}` : "?");
+          const resourceType = isWorld ? "world" : (idx >= 0 ? `${idx + 1}` : "1");
+          cellMap[r.p[1]][r.p[0]].primary = { type: `resource-${resourceType}`, label, id: `res-${r.t}-${r.p[0]}-${r.p[1]}`, rtype: r.t };
+        });
         Object.entries(frame.bases).forEach(([name, base]) => {
-          cellMap[base.pos[1]][base.pos[0]] = { type: name === "Blue" ? "base-blue" : "base-red", label: name[0], id: `base-${name}` };
+          cellMap[base.pos[1]][base.pos[0]].primary = { type: name === "Blue" ? "base-blue" : "base-red", label: name[0], id: `base-${name}` };
         });
         Object.entries(frame.units).forEach(([name, units]) => {
           units.forEach(u => {
-            cellMap[u.pos[1]][u.pos[0]] = { type: name === "Blue" ? "unit-blue" : "unit-red", label: name[0].toLowerCase(), id: u.id };
+            cellMap[u.pos[1]][u.pos[0]].primary = { type: name === "Blue" ? "unit-blue" : "unit-red", label: name[0].toLowerCase(), id: u.id };
           });
         });
 
@@ -198,12 +271,15 @@
           for (let x = 0; x < meta.width; x++) {
             const cell = document.createElement("div");
             cell.classList.add("cell");
-            const content = cellMap[y][x];
+            const cellData = cellMap[y][x];
+            const content = cellData.primary;
+            const control = cellData.control;
             const key = `${x},${y}`;
             const prevId = prevOccupants.get(key);
 
             if (content) {
               cell.classList.add(content.type);
+              if (content.rtype) cell.dataset.rtype = content.rtype;
               cell.textContent = content.label || "";
               if (prevId !== content.id) {
                 cell.classList.add("cell-pop");
@@ -218,6 +294,14 @@
               cell.style.border = "1px solid #1b2131";
               if (prevId) cell.classList.add("cell-flash");
             }
+            if (control) {
+              const controlClass = control.peace > 0 ? "control-peace" : control.controller === "Blue" ? "control-blue" : control.controller === "Red" ? "control-red" : "control-neutral";
+              cell.classList.add(controlClass);
+              const badge = document.createElement("div");
+              badge.className = "control-badge";
+              badge.textContent = control.peace > 0 ? "peace" : (control.controller ? control.controller[0] : "○");
+              cell.appendChild(badge);
+            }
             gridEl.appendChild(cell);
           }
         }
@@ -231,7 +315,7 @@
         const nextUnitPos = new Map();
         for (let y = 0; y < meta.height; y++) {
           for (let x = 0; x < meta.width; x++) {
-            const content = cellMap[y][x];
+            const content = cellMap[y][x].primary;
             if (content) {
               const key = `${x},${y}`;
               nextOcc.set(key, content.id);
@@ -250,8 +334,13 @@
         const r = frame.bases.Red;
         const bUnits = (frame.units.Blue || []).length;
         const rUnits = (frame.units.Red || []).length;
-        blueStats.innerHTML = `<label>Blue</label><strong>Score ${b.score}</strong><div>HP ${b.hp} · Units ${bUnits}</div>`;
-        redStats.innerHTML = `<label>Red</label><strong>Score ${r.score}</strong><div>HP ${r.hp} · Units ${rUnits}</div>`;
+        const controls = frame.controlPoints || [];
+        const blueCities = controls.filter(cp => cp.controller === "Blue").length;
+        const redCities = controls.filter(cp => cp.controller === "Red").length;
+        const citiesTextBlue = controls.length ? ` · Cities ${blueCities}` : "";
+        const citiesTextRed = controls.length ? ` · Cities ${redCities}` : "";
+        blueStats.innerHTML = `<label>Blue</label><strong>Score ${b.score}</strong><div>HP ${b.hp} · Units ${bUnits}${citiesTextBlue}</div>`;
+        redStats.innerHTML = `<label>Red</label><strong>Score ${r.score}</strong><div>HP ${r.hp} · Units ${rUnits}${citiesTextRed}</div>`;
       }
 
       function renderEvents(evts) {
@@ -266,7 +355,13 @@
           div.className = "event";
           div.textContent = e;
           if (e.toLowerCase().includes("fell") || e.toLowerCase().includes("destroy")) div.classList.add("bad");
-          if (e.toLowerCase().includes("delivered") || e.toLowerCase().includes("harvest")) div.classList.add("good");
+          if (
+            e.toLowerCase().includes("delivered") ||
+            e.toLowerCase().includes("harvest") ||
+            e.toLowerCase().includes("peace") ||
+            e.toLowerCase().includes("claimed") ||
+            e.toLowerCase().includes("fortified")
+          ) div.classList.add("good");
           eventsEl.appendChild(div);
         });
       }
@@ -296,13 +391,22 @@
 
       function loadReplay(data) {
         meta = data.meta;
+        meta.resourceTypes = (meta.resourceTypes && meta.resourceTypes.length ? meta.resourceTypes : ["R1", "R2", "R3"]);
         frames = data.frames;
         idx = 0;
         prevOccupants = new Map();
         prevUnitPos = new Map();
         winnerEl.textContent = data.winner ? `Winner: ${data.winner}` : "";
+        if (meta.mode) {
+          modeSelect.value = meta.mode;
+        }
+        modeMeta.textContent = meta.modeLabel ? `Mode: ${meta.modeLabel}` : `Mode: ${meta.mode || "classic"}`;
+        modeDesc.textContent = meta.modeDescription || modeDesc.textContent;
+        document.body.classList.toggle("world-mode", meta.mode === "world");
         gridEl.style.gridTemplateColumns = `repeat(${meta.width}, 1fr)`;
         gridEl.style.gridTemplateRows = `repeat(${meta.height}, 1fr)`;
+        gridEl.style.aspectRatio = `${meta.width} / ${meta.height}`;
+        renderLegend(meta.mode === "world");
         renderFrame(frames[idx]);
         playPauseBtn.textContent = "Pause";
         play();
@@ -317,6 +421,7 @@
         const params = new URLSearchParams({
           blue: blueAgent.value,
           red: redAgent.value,
+          mode: modeSelect.value,
         });
         if (seedValue !== null) params.append("seed", seedValue);
         try {
@@ -363,8 +468,44 @@
           play();
         }
       });
+      modeSelect.addEventListener("change", () => {
+        status.textContent = `Ready. Mode: ${modeSelect.options[modeSelect.selectedIndex].textContent}`;
+        renderLegend(modeSelect.value === "world");
+        document.body.classList.toggle("world-mode", modeSelect.value === "world");
+        gridEl.classList.toggle("mode-world", modeSelect.value === "world");
+      });
 
-      status.textContent = "Ready. Click Run Match to start.";
+      status.textContent = `Ready. Mode: ${modeSelect.options[modeSelect.selectedIndex].textContent}`;
+      renderLegend(modeSelect.value === "world");
+      document.body.classList.toggle("world-mode", modeSelect.value === "world");
+      gridEl.classList.toggle("mode-world", modeSelect.value === "world");
+
+      function renderLegend(isWorld) {
+        if (!legend) return;
+        legend.innerHTML = "";
+        if (!isWorld) {
+          legend.innerHTML = "<div class='chip'><span class='swatch' style='background: var(--green);'></span>Resources 1/2/3</div><div class='chip'><span class='swatch' style='background: var(--obstacle);'></span>Obstacles</div>";
+          return;
+        }
+        const chips = [
+          { label: "Intel cache", cls: "intel", text: "Intel" },
+          { label: "Supplies cache", cls: "supplies", text: "Supplies" },
+          { label: "Aid cache", cls: "aid", text: "Aid" },
+          { label: "City (control)", cls: "city", text: "City control" },
+          { label: "City (peace)", cls: "peace", text: "Peace dividend" },
+        ];
+        chips.forEach(c => {
+          const chip = document.createElement("div");
+          chip.className = "chip";
+          const sw = document.createElement("span");
+          sw.className = `swatch ${c.cls}`;
+          const txt = document.createElement("span");
+          txt.textContent = c.text;
+          chip.appendChild(sw);
+          chip.appendChild(txt);
+          legend.appendChild(chip);
+        });
+      }
     })();
   </script>
 </body>

@@ -5,26 +5,35 @@ import os
 from typing import List, Optional
 
 import config
-from entities import GameState, Position
+from entities import GameState
 
 
 class Visualizer:
-    def __init__(self, log_to_file: bool = False, clear_screen: bool = True):
+    def __init__(self, log_to_file: bool = False, clear_screen: bool = True, log_file_path: Optional[str] = None):
         self.log_to_file = log_to_file
         self.clear_screen = clear_screen
+        self.log_file_path = log_file_path or config.LOG_FILE
         if log_to_file:
-            with open(config.LOG_FILE, "w", encoding="utf-8") as f:
+            with open(self.log_file_path, "w", encoding="utf-8") as f:
                 f.write("ArenAI Grid match log\n")
 
     def render(self, state: GameState, events: List[str]) -> None:
         if self.clear_screen:
             os.system("cls" if os.name == "nt" else "clear")
         grid = [["." for _ in range(state.width)] for _ in range(state.height)]
+        res_types = getattr(state, "resource_types", config.RESOURCE_TYPES)
+        res_lookup = {rtype: idx for idx, rtype in enumerate(res_types)}
 
         for obs in state.obstacles:
             grid[obs.y][obs.x] = "#"
         for res in state.resources:
-            grid[res.position.y][res.position.x] = str(config.RESOURCE_TYPES.index(res.rtype) + 1)
+            label = res_lookup.get(res.rtype)
+            grid[res.position.y][res.position.x] = str(label + 1) if label is not None else "?"
+        for cp in getattr(state, "control_points", []):
+            current = grid[cp.position.y][cp.position.x]
+            if current == ".":
+                marker = "P" if cp.peace_turns > 0 else ("C" if cp.controller == "Blue" else "c" if cp.controller == "Red" else "o")
+                grid[cp.position.y][cp.position.x] = marker
         for player in state.players.values():
             base_char = "B" if player.name == "Blue" else "R"
             bx, by = player.base.position.x, player.base.position.y
@@ -35,7 +44,8 @@ class Visualizer:
                 ux, uy = unit.position.x, unit.position.y
                 grid[uy][ux] = base_char.lower()
 
-        print(f"ArenAI Grid – Turn {state.current_turn}/{state.max_turns}")
+        mode_label = getattr(state, "mode_label", "") or getattr(state, "mode", "")
+        print(f"ArenAI Grid – {mode_label} – Turn {state.current_turn}/{state.max_turns}")
         b_state = state.players["Blue"]
         r_state = state.players["Red"]
         blue_units = sum(1 for u in b_state.units.values() if u.is_alive())
@@ -55,7 +65,7 @@ class Visualizer:
             self._write_events(events)
 
     def _write_events(self, events: List[str]) -> None:
-        with open(config.LOG_FILE, "a", encoding="utf-8") as f:
+        with open(self.log_file_path, "a", encoding="utf-8") as f:
             for e in events:
                 f.write(e + "\n")
 
